@@ -30,23 +30,23 @@ export class Scene {
   readonly lights: DirectionalLight[] = [];
 
   private _context: Context;
-  private _gbufferPass: GBufferPass;
-  private _lightingPass: LightingPass;
-  private _transparentPass: TransparentPass;
+  // GPU resources are created lazily in initialize(), after context.initialize().
+  private _gbufferPass: GBufferPass | null = null;
+  private _lightingPass: LightingPass | null = null;
+  private _transparentPass: TransparentPass | null = null;
 
   private _opaquePipeline: GPURenderPipeline | null = null;
-  private _cameraUniformBuffer: GPUBuffer;
+  private _cameraUniformBuffer: GPUBuffer | null = null;
   private _cameraBindGroup: GPUBindGroup | null = null;
 
   private _prepared = false;
-  private _width:  number;
-  private _height: number;
+  private _width  = 1;
+  private _height = 1;
 
   constructor(context: Context) {
     this._context = context;
-    this._width   = context.drawingBufferWidth;
-    this._height  = context.drawingBufferHeight;
 
+    // None of these touch context.device — safe to call before initialize().
     this.camera     = new Camera();
     this.globe      = new Globe(context);
     this.primitives = new PrimitiveCollection();
@@ -58,38 +58,43 @@ export class Scene {
       intensity:        1.2,
       ambientIntensity: 0.08,
     }));
+  }
 
-    // G-Buffer pass
-    this._gbufferPass = new GBufferPass(context, this._width, this._height);
+  /**
+   * Initialise all render pipelines.  Must be called (and awaited) after
+   * context.initialize() so that context.device is available.
+   */
+  async initialize(): Promise<void> {
+    if (this._prepared) return;
 
-    // Lighting pass
+    // Read canvas size now — context.initialize() + _resizeCanvas() have already run.
+    this._width  = this._context.drawingBufferWidth  || 1;
+    this._height = this._context.drawingBufferHeight || 1;
+
+    // G-Buffer pass (creates GPU textures lazily on first use)
+    this._gbufferPass = new GBufferPass(this._context, this._width, this._height);
+
+    // Lighting pass (creates GPU buffers in constructor — device is now available)
     this._lightingPass = new LightingPass(
-      context,
+      this._context,
       this._gbufferPass,
-      context.preferredFormat
+      this._context.preferredFormat
     );
 
     // Transparent pass
     this._transparentPass = new TransparentPass(
-      context,
+      this._context,
       this._width,
       this._height,
-      context.preferredFormat
+      this._context.preferredFormat
     );
 
-    // Shared camera UBO (G-Buffer pass)
-    this._cameraUniformBuffer = context.device.createBuffer({
+    // Shared camera UBO for the G-Buffer pass
+    this._cameraUniformBuffer = this._context.device.createBuffer({
       label: 'Scene.CameraUBO',
       size:  256,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
-  }
-
-  /**
-   * Initialise all render pipelines.  Must be called before the first render.
-   */
-  async initialize(): Promise<void> {
-    if (this._prepared) return;
 
     // Build globe geometry
     const globePrimitive = this.globe.initialize();
@@ -120,7 +125,11 @@ export class Scene {
    * Add a transparent primitive to the scene.
    */
   addTransparentPrimitive(primitive: Primitive): void {
-    if (!this._transparentPass.accumulationPipeline || !this._transparentPass.cameraBindGroupLayout) {
+    if (
+      !this._transparentPass ||
+      !this._transparentPass.accumulationPipeline ||
+      !this._transparentPass.cameraBindGroupLayout
+    ) {
       console.warn('Scene.addTransparentPrimitive: scene not yet prepared');
       return;
     }
@@ -149,9 +158,9 @@ export class Scene {
     this._width  = width;
     this._height = height;
     this._context.resize(width, height);
-    this._gbufferPass.resize(width, height);
-    this._transparentPass.resize(width, height);
-    this._lightingPass.rebuildGBufferBindGroup();
+    this._gbufferPass?.resize(width, height);
+    this._transparentPass?.resize(width, height);
+    this._lightingPass?.rebuildGBufferBindGroup();
     this.camera.setAspectRatio(width / height);
   }
 
@@ -159,7 +168,14 @@ export class Scene {
    * Render one frame.
    */
   render(): void {
-    if (!this._prepared || !this._opaquePipeline || !this._cameraBindGroup) return;
+    if (
+      !this._prepared ||
+      !this._opaquePipeline ||
+      !this._cameraBindGroup ||
+      !this._gbufferPass ||
+      !this._lightingPass ||
+      !this._transparentPass
+    ) return;
 
     const ctx     = this._context;
     const device  = ctx.device;
@@ -217,15 +233,16 @@ export class Scene {
   destroy(): void {
     this.globe.destroy();
     this.primitives.removeAll();
-    this._gbufferPass.destroy();
-    this._lightingPass.destroy();
-    this._transparentPass.destroy();
-    this._cameraUniformBuffer.destroy();
+    this._gbufferPass?.destroy();
+    this._lightingPass?.destroy();
+    this._transparentPass?.destroy();
+    this._cameraUniformBuffer?.destroy();
   }
 
   // ── Private ────────────────────────────────────────────────────────────────
 
   private _uploadCameraUBO(): void {
+    if (!this._cameraUniformBuffer) return;
     const cam = this.camera;
     const data = new Float32Array(64); // 256 bytes / 4
 
