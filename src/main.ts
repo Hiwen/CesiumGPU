@@ -25,37 +25,13 @@ async function main() {
     await viewer.initialize();
 
     // ── Set initial camera position ────────────────────────────────────────
-    // Fly to a position above Beijing (116.4°E, 39.9°N), altitude 20 000 km
+    // Position above Beijing (116.4°E, 39.9°N), altitude 20 000 km
     viewer.camera.flyTo({
       destination: Cartesian3.fromDegrees(116.4, 39.9, 20_000_000),
     });
 
-    // ── Add a transparent atmosphere sphere ────────────────────────────────
-    const atmosGeom = new EllipsoidGeometry({
-      radii: new Cartesian3(6478137.0, 6478137.0, 6458137.0), // 100 km above surface
-      stackPartitions: 64,
-      slicePartitions: 32,
-    });
-    const { vertices: av, indices: ai } = atmosGeom.createInterleavedBuffer();
-
-    const atmospherePrimitive = new Primitive(viewer.scene['_context'], {
-      vertices:    av,
-      indices:     ai,
-      color:       new Color(0.3, 0.6, 1.0, 0.15),
-      translucent: true,
-      alpha:       0.15,
-    });
-
-    viewer.scene.addTransparentPrimitive(atmospherePrimitive);
-
-    // ── Try to load earth imagery (NASA Blue Marble via Wikimedia Commons) ──
-    // Falls back gracefully if image cannot be loaded (CORS / network)
-    viewer.globe.loadImageryFromUrl(
-      'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8f/Whole_world_-_land_and_oceans_12000.jpg/2560px-Whole_world_-_land_and_oceans_12000.jpg'
-    ).catch(() => {
-      // Non-fatal: plain colour globe is still rendered
-      console.info('CesiumGPU: imagery load failed, using base color.');
-    });
+    // ── Apply procedural Earth texture (local, no network required) ────────
+    viewer.globe.generateProceduralTexture();
 
     console.info('CesiumGPU initialised successfully.');
 

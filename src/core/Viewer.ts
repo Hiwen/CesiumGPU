@@ -175,7 +175,8 @@ export class Viewer {
         this._lastMouseY = e.clientY;
 
         const sensitivity = r * 0.0003;
-        this._scene.camera.rotate(-dx * sensitivity, -dy * sensitivity);
+        // dy sign matches Cesium: drag DOWN → camera orbits northward (positive deltaLat)
+        this._scene.camera.rotate(-dx * sensitivity, dy * sensitivity);
       }
 
       if (this._isRightDragging) {
@@ -227,7 +228,7 @@ export class Viewer {
         this._lastMouseX = e.touches[0].clientX;
         this._lastMouseY = e.touches[0].clientY;
         const sensitivity = r * 0.0003;
-        this._scene.camera.rotate(-dx * sensitivity, -dy * sensitivity);
+        this._scene.camera.rotate(-dx * sensitivity, dy * sensitivity);
       } else if (e.touches.length === 2) {
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
