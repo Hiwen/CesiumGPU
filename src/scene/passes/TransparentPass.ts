@@ -111,7 +111,7 @@ export class TransparentPass {
         },
         {
           view:       this._revealView!,
-          clearValue: { r: 1, g: 0, b: 0, a: 0 }, // reveal starts at 1.0
+          clearValue: { r: 1, g: 0, b: 0, a: 0 }, // r8unorm: only the red channel is used; start at 1.0 (fully visible background)
           loadOp:  'clear',
           storeOp: 'store',
         },

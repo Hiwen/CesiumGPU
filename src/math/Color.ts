@@ -59,7 +59,9 @@ export class Color {
   }
 
   withAlpha(alpha: number, result?: Color): Color {
-    return this.clone(result).withAlpha(alpha);
+    const c = this.clone(result);
+    c.alpha = alpha;
+    return c;
   }
 
   toFloat32Array(): Float32Array {

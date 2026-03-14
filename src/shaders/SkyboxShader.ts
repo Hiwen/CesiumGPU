@@ -34,7 +34,6 @@ fn vs_main(@builtin(vertex_index) vid: u32) -> VSOut {
   var out: VSOut;
   out.pos = vec4<f32>(ndcPos, 0.9999, 1.0); // depth at far plane
   // Approximate ray direction from NDC
-  let invProj = camera.projMatrix; // simplified: pass invViewProj separately if needed
   out.rayDir = vec3<f32>(ndcPos * vec2<f32>(1.0 / camera.projMatrix[0][0], 1.0 / camera.projMatrix[1][1]), -1.0);
   return out;
 }
