@@ -23,8 +23,8 @@ export class Camera {
   frustum = {
     fov: CesiumMath.toRadians(60),
     aspectRatio: 1.0,
-    near: 0.0001,
-    far: 1000.0,
+    near: 0.005,   // 0.5% of normalised Earth radius (≈32 km); safely below min camera-to-surface distance of 0.05
+    far: 100.0,    // covers max orbit radius of 50 normalised units with generous margin
   };
 
   /** World-space position in normalised ECEF (Earth radius = 1). */

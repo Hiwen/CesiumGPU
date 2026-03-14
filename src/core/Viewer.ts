@@ -33,16 +33,19 @@ export class Viewer {
   private _scene: Scene;
 
   private _animFrameId: number | null = null;
-  private _lastTime = 0;
   private _fps = 0;
   private _frameCount = 0;
   private _fpsInterval = 0;
   private _fpsEl: HTMLElement | null = null;
 
-  // Mouse orbit state
+  // Mouse orbit state (left button)
   private _isDragging = false;
   private _lastMouseX = 0;
   private _lastMouseY = 0;
+
+  // Mouse zoom state (right button)
+  private _isRightDragging = false;
+  private _lastRightMouseY = 0;
 
   private _initialized = false;
   private _destroyed = false;
@@ -121,19 +124,11 @@ export class Viewer {
   }
 
   private _startRenderLoop(): void {
-    const now = performance.now();
-    this._fpsInterval = now;
-    this._lastTime    = now; // avoid a large dt on the very first frame
+    this._fpsInterval = performance.now();
 
     const loop = (now: number) => {
       if (this._destroyed) return;
       this._animFrameId = requestAnimationFrame(loop);
-
-      const dt = now - this._lastTime;
-      this._lastTime = now;
-
-      // Auto-rotate the Earth slowly
-      this._scene.camera.rotate(dt * 0.00002, 0);
 
       this._scene.render();
 
@@ -157,34 +152,57 @@ export class Viewer {
     const ro = new ResizeObserver(() => this._resizeCanvas());
     ro.observe(this._container);
 
-    // Mouse drag to orbit
+    // ── Left-button drag → orbit (Cesium-compatible) ───────────────────────
     canvas.addEventListener('mousedown', (e) => {
-      this._isDragging  = true;
-      this._lastMouseX  = e.clientX;
-      this._lastMouseY  = e.clientY;
+      if (e.button === 0) {
+        this._isDragging    = true;
+        this._lastMouseX    = e.clientX;
+        this._lastMouseY    = e.clientY;
+      } else if (e.button === 2) {
+        this._isRightDragging = true;
+        this._lastRightMouseY = e.clientY;
+      }
     });
 
     window.addEventListener('mousemove', (e) => {
-      if (!this._isDragging) return;
-      const dx = e.clientX - this._lastMouseX;
-      const dy = e.clientY - this._lastMouseY;
-      this._lastMouseX = e.clientX;
-      this._lastMouseY = e.clientY;
+      // Orbit sensitivity scales with camera distance (Cesium behaviour)
+      const r = Cartesian3.magnitude(this._scene.camera.position);
 
-      const sensitivity = 0.005;
-      this._scene.camera.rotate(-dx * sensitivity, -dy * sensitivity);
+      if (this._isDragging) {
+        const dx = e.clientX - this._lastMouseX;
+        const dy = e.clientY - this._lastMouseY;
+        this._lastMouseX = e.clientX;
+        this._lastMouseY = e.clientY;
+
+        const sensitivity = r * 0.0003;
+        this._scene.camera.rotate(-dx * sensitivity, -dy * sensitivity);
+      }
+
+      if (this._isRightDragging) {
+        const dy = e.clientY - this._lastRightMouseY;
+        this._lastRightMouseY = e.clientY;
+        // Right-drag down → zoom out (positive delta = larger radius)
+        this._scene.camera.zoom(dy * r * 0.002);
+      }
     });
 
-    window.addEventListener('mouseup', () => { this._isDragging = false; });
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 0) this._isDragging = false;
+      if (e.button === 2) this._isRightDragging = false;
+    });
 
-    // Wheel to zoom
+    // Prevent browser context menu when right-clicking the canvas
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // ── Scroll wheel → proportional zoom (Cesium-compatible) ──────────────
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
-      const delta = e.deltaY * 0.001;
-      this._scene.camera.zoom(delta);
+      const r = Cartesian3.magnitude(this._scene.camera.position);
+      // Scroll up (deltaY < 0) → zoom in; scroll down → zoom out
+      this._scene.camera.zoom(e.deltaY * r * 0.0002);
     }, { passive: false });
 
-    // Touch support
+    // ── Touch support ──────────────────────────────────────────────────────
     let lastTouchDist = 0;
     canvas.addEventListener('touchstart', (e) => {
       if (e.touches.length === 1) {
@@ -201,19 +219,21 @@ export class Viewer {
 
     canvas.addEventListener('touchmove', (e) => {
       e.preventDefault();
+      const r = Cartesian3.magnitude(this._scene.camera.position);
+
       if (e.touches.length === 1 && this._isDragging) {
         const dx = e.touches[0].clientX - this._lastMouseX;
         const dy = e.touches[0].clientY - this._lastMouseY;
         this._lastMouseX = e.touches[0].clientX;
         this._lastMouseY = e.touches[0].clientY;
-        const sensitivity = 0.005;
+        const sensitivity = r * 0.0003;
         this._scene.camera.rotate(-dx * sensitivity, -dy * sensitivity);
       } else if (e.touches.length === 2) {
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        const delta = (lastTouchDist - dist) * 0.01;
-        this._scene.camera.zoom(delta);
+        // Pinch apart → zoom in (negative delta), pinch together → zoom out
+        this._scene.camera.zoom((lastTouchDist - dist) * r * 0.002);
         lastTouchDist = dist;
       }
     }, { passive: false });
