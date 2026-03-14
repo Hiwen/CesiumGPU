@@ -121,7 +121,9 @@ export class Viewer {
   }
 
   private _startRenderLoop(): void {
-    this._fpsInterval = performance.now();
+    const now = performance.now();
+    this._fpsInterval = now;
+    this._lastTime    = now; // avoid a large dt on the very first frame
 
     const loop = (now: number) => {
       if (this._destroyed) return;

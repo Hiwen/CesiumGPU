@@ -86,7 +86,7 @@ export class Globe {
         size:   { width: bitmap.width, height: bitmap.height },
         format: 'rgba8unorm',
         usage:  GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
-        mipLevelCount: Math.floor(Math.log2(Math.max(bitmap.width, bitmap.height))) + 1,
+        mipLevelCount: 1,
       });
 
       device.queue.copyExternalImageToTexture(
@@ -100,7 +100,6 @@ export class Globe {
       const sampler = device.createSampler({
         minFilter:    'linear',
         magFilter:    'linear',
-        mipmapFilter: 'linear',
         addressModeU: 'repeat',
         addressModeV: 'clamp-to-edge',
         maxAnisotropy: 4,

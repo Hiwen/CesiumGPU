@@ -72,7 +72,7 @@ export class Context {
     this._context.configure({
       device: this._device,
       format: this._format,
-      alphaMode: 'premultiplied',
+      alphaMode: 'opaque',
     });
 
     this._initialized = true;

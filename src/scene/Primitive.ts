@@ -36,6 +36,7 @@ export class Primitive {
 
   private _modelUniformBuffer: GPUBuffer;
   private _materialUniformBuffer: GPUBuffer;
+  private _opaquePipeline: GPURenderPipeline | null = null;
   private _opaqueModelBindGroup: GPUBindGroup | null = null;
 
   private _color: Color;
@@ -146,8 +147,10 @@ export class Primitive {
   setTexture(texture: GPUTexture, sampler?: GPUSampler): void {
     this._texture = texture;
     if (sampler) this._sampler = sampler;
-    // Invalidate bind groups
-    this._opaqueModelBindGroup = null;
+    // Rebuild the bind group immediately so the new texture takes effect
+    if (this._opaquePipeline) {
+      this.buildOpaqueBindGroup(this._opaquePipeline);
+    }
   }
 
   // ── G-Buffer (opaque) rendering ─────────────────────────────────────────────
@@ -156,6 +159,7 @@ export class Primitive {
    * Build the per-model bind group for the G-Buffer pass.
    */
   buildOpaqueBindGroup(pipeline: GPURenderPipeline): void {
+    this._opaquePipeline = pipeline;
     const device = this._context.device;
     this._opaqueModelBindGroup = device.createBindGroup({
       label:  'Primitive.OpaqueBG',
