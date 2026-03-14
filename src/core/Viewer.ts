@@ -195,7 +195,7 @@ export class Viewer {
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         lastTouchDist = Math.sqrt(dx * dx + dy * dy);
       }
-    });
+    }, { passive: true });
 
     canvas.addEventListener('touchmove', (e) => {
       e.preventDefault();

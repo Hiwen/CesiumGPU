@@ -48,10 +48,10 @@ async function main() {
 
     viewer.scene.addTransparentPrimitive(atmospherePrimitive);
 
-    // ── Try to load earth imagery (NASA Blue Marble) ───────────────────────
+    // ── Try to load earth imagery (NASA Blue Marble via Wikimedia Commons) ──
     // Falls back gracefully if image cannot be loaded (CORS / network)
     viewer.globe.loadImageryFromUrl(
-      'https://eoimages.gsfc.nasa.gov/images/imagerecords/73000/73776/world.topo.bathy.200412.3x5400x2700.jpg'
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8f/Whole_world_-_land_and_oceans_12000.jpg/2560px-Whole_world_-_land_and_oceans_12000.jpg'
     ).catch(() => {
       // Non-fatal: plain colour globe is still rendered
       console.info('CesiumGPU: imagery load failed, using base color.');

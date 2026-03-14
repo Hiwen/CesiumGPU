@@ -117,10 +117,9 @@ export class TransparentPass {
         },
       ],
       depthStencilAttachment: {
-        view:            depthView,
-        depthLoadOp:     'load',    // read the opaque depth from G-Buffer
-        depthStoreOp:    'discard',
-        depthReadOnly:   true,
+        view: depthView,
+        depthReadOnly: true,
+        // depthLoadOp / depthStoreOp must NOT be set when depthReadOnly is true (WebGPU spec)
       },
     });
   }
