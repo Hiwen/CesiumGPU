@@ -42,6 +42,9 @@ export class Camera {
   private _viewDirty = true;
   private _projDirty = true;
 
+  /** Minimum dot product of camera direction with nadir before pitch is rejected (~85° max tilt). */
+  private static readonly _MAX_TILT_NADIR_DOT = Math.cos(CesiumMath.toRadians(85));
+
   /** Scale factor: 1 internal unit = EARTH_SCALE metres */
   static readonly EARTH_SCALE = 6378137.0;
 
@@ -111,6 +114,10 @@ export class Camera {
   rotate(deltaLon: number, deltaLat: number): void {
     const radius = Cartesian3.magnitude(this.position);
 
+    // Unit vector of the current camera position (before the orbit step)
+    const oldUnit = new Cartesian3();
+    Cartesian3.normalize(this.position, oldUnit);
+
     // Current lon/lat
     const lon = Math.atan2(this.position.y, this.position.x);
     const lat = Math.asin(CesiumMath.clamp(this.position.z / radius, -1, 1));
@@ -122,8 +129,22 @@ export class Camera {
     this.position.y = radius * Math.cos(newLat) * Math.sin(newLon);
     this.position.z = radius * Math.sin(newLat);
 
-    // Rebuild the camera frame, preserving the current pitch offset
-    this._rebuildFrame();
+    // Rotate the camera frame by the same rotation that maps oldUnit → newUnit
+    // so that any pitch / heading applied via middle-mouse is preserved.
+    const newUnit = new Cartesian3();
+    Cartesian3.normalize(this.position, newUnit);
+    const rotAxis = new Cartesian3();
+    Cartesian3.cross(oldUnit, newUnit, rotAxis);
+    const axisLen = Cartesian3.magnitude(rotAxis);
+    if (axisLen > 1e-9) {
+      Cartesian3.normalize(rotAxis, rotAxis);
+      const angle = Math.acos(CesiumMath.clamp(Cartesian3.dot(oldUnit, newUnit), -1, 1));
+      Camera._rotateByAxis(this.direction, rotAxis, angle, this.direction);
+      Camera._rotateByAxis(this.up,        rotAxis, angle, this.up);
+      Camera._rotateByAxis(this.right,     rotAxis, angle, this.right);
+    }
+
+    this._viewDirty = true;
   }
 
   /**
@@ -197,36 +218,47 @@ export class Camera {
    * @param deltaPitch   - pitch rotation in radians (positive = tilt down)
    */
   orbitAroundPivot(pivot: Cartesian3, deltaHeading: number, deltaPitch: number): void {
-    // Arm vector: from pivot to camera
+    // Arm vector: from pivot to camera position
     const arm = new Cartesian3(
       this.position.x - pivot.x,
       this.position.y - pivot.y,
       this.position.z - pivot.z,
     );
 
-    // ── Heading: rotate arm around the outward surface normal at the pivot ──
+    // ── Step 1: Heading — rotate arm and the full camera frame around the
+    //   pivot's outward surface normal.  This spins the camera around the
+    //   globe point while keeping the camera's orientation relative to the
+    //   surface intact.
     const pivotNormal = new Cartesian3();
     Cartesian3.normalize(pivot, pivotNormal);
-    Camera._rotateByAxis(arm, pivotNormal, deltaHeading, arm);
+    Camera._rotateByAxis(arm,            pivotNormal, deltaHeading, arm);
+    Camera._rotateByAxis(this.direction, pivotNormal, deltaHeading, this.direction);
+    Camera._rotateByAxis(this.up,        pivotNormal, deltaHeading, this.up);
+    Camera._rotateByAxis(this.right,     pivotNormal, deltaHeading, this.right);
 
-    // ── Pitch: rotate arm around the camera's right axis (through the pivot) ─
-    // Recompute the right vector from the (post-heading) position so it is
-    // always horizontal and perpendicular to the pivot normal.
+    // ── Step 2: Pitch — rotate arm, direction and up around the camera's
+    //   (already-updated) right axis.  right is the rotation axis so it does
+    //   not change.  Save state first so we can cancel an over-rotation.
+    const armX = arm.x, armY = arm.y, armZ = arm.z;
+    const dirX = this.direction.x, dirY = this.direction.y, dirZ = this.direction.z;
+    const upX  = this.up.x,        upY  = this.up.y,        upZ  = this.up.z;
+
+    Camera._rotateByAxis(arm,            this.right, deltaPitch, arm);
+    Camera._rotateByAxis(this.direction, this.right, deltaPitch, this.direction);
+    Camera._rotateByAxis(this.up,        this.right, deltaPitch, this.up);
+
+    // Reject the pitch if it would tip the camera past ~85° from nadir
+    // (dot product with nadir direction < cos(85°) ≈ 0.087).
     const newPos = new Cartesian3(pivot.x + arm.x, pivot.y + arm.y, pivot.z + arm.z);
     const newNadir = new Cartesian3(-newPos.x, -newPos.y, -newPos.z);
     Cartesian3.normalize(newNadir, newNadir);
-    const worldUp = new Cartesian3(0, 0, 1);
-    const pitchAxis = new Cartesian3();
-    Cartesian3.cross(newNadir, worldUp, pitchAxis);
-    if (Cartesian3.magnitude(pitchAxis) > 1e-6) {
-      Cartesian3.normalize(pitchAxis, pitchAxis);
-    } else {
-      // Degenerate at poles: fall back to the current camera right vector
-      this.right.clone(pitchAxis);
+    if (Cartesian3.dot(this.direction, newNadir) < Camera._MAX_TILT_NADIR_DOT) {
+      arm.x = armX; arm.y = armY; arm.z = armZ;
+      this.direction.x = dirX; this.direction.y = dirY; this.direction.z = dirZ;
+      this.up.x = upX;         this.up.y = upY;         this.up.z = upZ;
     }
-    Camera._rotateByAxis(arm, pitchAxis, deltaPitch, arm);
 
-    // ── Apply new position ─────────────────────────────────────────────────
+    // ── Apply new position ────────────────────────────────────────────────────
     this.position.x = pivot.x + arm.x;
     this.position.y = pivot.y + arm.y;
     this.position.z = pivot.z + arm.z;
@@ -240,8 +272,7 @@ export class Camera {
       this.position.z *= scale;
     }
 
-    // Rebuild camera frame looking toward Earth centre from the new position
-    this._rebuildFrame();
+    this._viewDirty = true;
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────
