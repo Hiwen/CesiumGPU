@@ -61,6 +61,13 @@ export class Viewer {
   private _isRightDragging = false;
   private _lastRightMouseY = 0;
 
+  // Mouse pitch/rotation state (middle button) — orbits around the globe point
+  // that was under the cursor when the button was pressed.
+  private _isMiddleDragging = false;
+  private _lastMiddleMouseX = 0;
+  private _lastMiddleMouseY = 0;
+  private _middlePivot: Cartesian3 | null = null;
+
   private _initialized = false;
   private _destroyed = false;
 
@@ -175,6 +182,21 @@ export class Viewer {
         this._isDragging    = true;
         this._lastMouseX    = e.clientX;
         this._lastMouseY    = e.clientY;
+      } else if (e.button === 1) {
+        // Middle button — pitch / heading orbit around the hit point on the globe
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        const ndcY = 1 - ((e.clientY - rect.top) / rect.height) * 2;
+        // Pick the globe at the click position; fall back to screen centre
+        this._middlePivot =
+          this._scene.camera.pickGlobe(ndcX, ndcY) ??
+          this._scene.camera.pickGlobe(0, 0);
+        if (this._middlePivot) {
+          this._isMiddleDragging = true;
+          this._lastMiddleMouseX = e.clientX;
+          this._lastMiddleMouseY = e.clientY;
+        }
       } else if (e.button === 2) {
         this._isRightDragging = true;
         this._lastRightMouseY = e.clientY;
@@ -196,16 +218,27 @@ export class Viewer {
         this._scene.camera.rotate(-dx * sensitivity, dy * sensitivity);
       }
 
+      if (this._isMiddleDragging && this._middlePivot) {
+        const dx = e.clientX - this._lastMiddleMouseX;
+        const dy = e.clientY - this._lastMiddleMouseY;
+        this._lastMiddleMouseX = e.clientX;
+        this._lastMiddleMouseY = e.clientY;
+        // dx > 0 (right) → negative heading  (Cesium-compatible)
+        // dy > 0 (down)  → positive pitch delta (tilt away from horizon)
+        this._scene.camera.orbitAroundPivot(this._middlePivot, -dx * 0.005, -dy * 0.005);
+      }
+
       if (this._isRightDragging) {
         const dy = e.clientY - this._lastRightMouseY;
         this._lastRightMouseY = e.clientY;
-        // Right-drag down → zoom out (positive delta = larger radius)
-        this._scene.camera.zoom(dy * r * 0.002);
+        // Right-drag down → zoom in (matches Cesium: drag toward globe = move closer)
+        this._scene.camera.zoom(-dy * r * 0.002);
       }
     });
 
     window.addEventListener('mouseup', (e) => {
       if (e.button === 0) this._isDragging = false;
+      if (e.button === 1) { this._isMiddleDragging = false; this._middlePivot = null; }
       if (e.button === 2) this._isRightDragging = false;
     });
 
