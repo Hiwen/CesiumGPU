@@ -12,6 +12,7 @@ export { Cartesian2 } from './math/Cartesian2';
 export { Cartesian3 } from './math/Cartesian3';
 export { Cartesian4 } from './math/Cartesian4';
 export { Matrix4 } from './math/Matrix4';
+export { Transforms } from './math/Transforms';
 export { Quaternion } from './math/Quaternion';
 export { Ellipsoid } from './math/Ellipsoid';
 export { Color } from './math/Color';
@@ -28,6 +29,12 @@ export { DirectionalLight } from './scene/DirectionalLight';
 export { Primitive, PrimitiveCollection } from './scene/Primitive';
 export { EllipsoidGeometry } from './scene/EllipsoidGeometry';
 export { SunPosition } from './scene/SunPosition';
+
+// Model loading
+export { Model } from './scene/Model';
+export { GltfLoader } from './loader/GltfLoader';
+export type { ModelFromGltfOptions } from './scene/Model';
+export type { ParsedGltfModel, ParsedMeshPrimitive, ParsedMaterial } from './loader/GltfLoader';
 
 // Rendering passes
 export { GBufferPass } from './scene/passes/GBufferPass';

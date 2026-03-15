@@ -1,12 +1,16 @@
 import { Viewer } from './core/Viewer';
 import { Clock } from './core/Clock';
 import { Cartesian3 } from './math/Cartesian3';
+import { Matrix4 } from './math/Matrix4';
+import { Transforms } from './math/Transforms';
 import { JulianDate } from './math/JulianDate';
 import { Color } from './math/Color';
 import { Primitive, PrimitiveCollection } from './scene/Primitive';
 import { EllipsoidGeometry } from './scene/EllipsoidGeometry';
 import { DirectionalLight } from './scene/DirectionalLight';
 import { SunPosition } from './scene/SunPosition';
+import { Model } from './scene/Model';
+import { Camera } from './scene/Camera';
 
 /**
  * CesiumGPU - WebGPU 3D Earth Rendering Engine
@@ -143,6 +147,11 @@ async function main() {
 
     console.info('CesiumGPU initialised successfully.');
 
+    // ── Load cone4-red.glb test model ─────────────────────────────────────
+    // Placed above Beijing (116.4°E, 39.9°N) at Earth surface.
+    // Scale of 500 km makes it visible from the default 20 000 km camera.
+    void _loadConeModel(viewer, Model, Matrix4, Cartesian3, Camera);
+
   } catch (err) {
     console.error('CesiumGPU init error:', err);
     if (noWebgpuEl) noWebgpuEl.style.display = 'block';
@@ -151,7 +160,62 @@ async function main() {
 
 void main();
 
-// ── Public exports ──────────────────────────────────────────────────────────
+// ── Test model loader ─────────────────────────────────────────────────────────
+
+/**
+ * Load the test cone model (public/models/cone4-red.glb) and place it above
+ * Beijing using a proper ENU (East-North-Up) reference frame so that the
+ * model's +Y axis (GLTF 2.0 Y-up convention) aligns with the local Earth
+ * surface normal.
+ *
+ * Matrix composition:
+ *   1. `Transforms.eastNorthUpToFixedFrame(ecef)` – rotates & translates to
+ *      ENU frame at Beijing (col0=East, col1=North, col2=Up).
+ *   2. `Matrix4.fromRotationX(Math.PI / 2)` – converts GLTF Y-up to ENU
+ *      Z-up so the model stands upright on the surface.
+ *
+ * Scale: 500 000 m (500 km) so the cone is prominent at the initial
+ * 20 000 km camera altitude.
+ */
+async function _loadConeModel(
+  viewer: Viewer,
+  ModelClass: typeof Model,
+  Matrix4Class: typeof Matrix4,
+  Cartesian3Class: typeof Cartesian3,
+  CameraClass: typeof Camera
+): Promise<void> {
+  try {
+    // ECEF position of Beijing (116.4°E, 39.9°N) at Earth surface level (metres)
+    const ecef = Cartesian3Class.fromDegrees(116.4, 39.9, 0);
+
+    // ENU-to-normalised-ECEF matrix at the placement point:
+    //   col0 = East, col1 = North, col2 = Up (surface normal), col3 = position
+    const enuMatrix = Transforms.eastNorthUpToFixedFrame(ecef);
+
+    // GLTF 2.0 is Y-up; the ENU local frame is Z-up.
+    // A +90° rotation around the East (X) axis maps the model's +Y to ENU +Z,
+    // so the model stands upright with its top pointing away from Earth.
+    const yUpToZUp = Matrix4Class.fromRotationX(Math.PI / 2);
+
+    const placementMatrix = Matrix4.multiply(enuMatrix, yUpToZUp, new Matrix4());
+
+    // Scale: 500 000 m → normalised ECEF units
+    const modelScale = 500_000 / CameraClass.EARTH_SCALE;
+
+    const model = await ModelClass.fromGltfAsync({
+      url:         '/models/cone4-red.glb',
+      scene:       viewer.scene,
+      modelMatrix: placementMatrix,
+      scale:       modelScale,
+    });
+
+    console.info(`CesiumGPU: cone4-red.glb loaded (${model.primitiveCount} primitive(s))`);
+  } catch (err) {
+    console.warn('CesiumGPU: failed to load cone4-red.glb', err);
+  }
+}
+
+// ── Public exports ───────────────────────────────────────────────────────────
 export {
   Viewer,
   Cartesian3,
@@ -160,6 +224,8 @@ export {
   PrimitiveCollection,
   EllipsoidGeometry,
   DirectionalLight,
+  Model,
+  Camera,
 };
 
 export { CesiumMath } from './math/CesiumMath';
@@ -170,7 +236,7 @@ export { Quaternion } from './math/Quaternion';
 export { Ellipsoid } from './math/Ellipsoid';
 export { JulianDate } from './math/JulianDate';
 export { Scene } from './scene/Scene';
-export { Camera } from './scene/Camera';
 export { Globe } from './scene/Globe';
 export { Clock } from './core/Clock';
 export { SunPosition } from './scene/SunPosition';
+export { GltfLoader } from './loader/GltfLoader';
