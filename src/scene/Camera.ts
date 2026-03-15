@@ -42,9 +42,6 @@ export class Camera {
   private _viewDirty = true;
   private _projDirty = true;
 
-  /** Pitch offset from nadir (radians). 0 = looking straight at Earth centre. */
-  private _pitchOffset = 0;
-
   /** Scale factor: 1 internal unit = EARTH_SCALE metres */
   static readonly EARTH_SCALE = 6378137.0;
 
@@ -95,8 +92,6 @@ export class Camera {
       this.position.y = options.destination.y * scale;
       this.position.z = options.destination.z * scale;
 
-      // Reset pitch to nadir view and rebuild the camera frame
-      this._pitchOffset = 0;
       this._rebuildFrame();
     }
     this._viewDirty = true;
@@ -156,26 +151,124 @@ export class Camera {
   }
 
   /**
-   * Tilt the camera view by adjusting the pitch offset from nadir.
-   * Positive delta tilts toward the horizon; negative tilts back toward nadir.
-   * @param delta - angle change in radians
+   * Cast a ray from the camera through the given normalised device coordinates
+   * and return the first intersection with the unit sphere (the Earth).
+   * @param ndcX - normalised device X in [-1, 1] (right is positive)
+   * @param ndcY - normalised device Y in [-1, 1] (up is positive)
+   * @returns World-space intersection point, or null if the ray misses the globe.
    */
-  tilt(delta: number): void {
-    // Clamp pitch offset: 0 = looking straight at Earth centre (nadir),
-    // approaching PI/2 = looking at the horizon
-    this._pitchOffset = CesiumMath.clamp(
-      this._pitchOffset + delta,
-      0,
-      Math.PI / 2 - 0.05,
+  pickGlobe(ndcX: number, ndcY: number): Cartesian3 | null {
+    const tanHalfFovY = Math.tan(this.frustum.fov * 0.5);
+    const tanHalfFovX = tanHalfFovY * this.frustum.aspectRatio;
+
+    // World-space ray direction through the clicked pixel
+    const rayDir = new Cartesian3(
+      this.direction.x + ndcX * tanHalfFovX * this.right.x + ndcY * tanHalfFovY * this.up.x,
+      this.direction.y + ndcX * tanHalfFovX * this.right.y + ndcY * tanHalfFovY * this.up.y,
+      this.direction.z + ndcX * tanHalfFovX * this.right.z + ndcY * tanHalfFovY * this.up.z,
     );
+    Cartesian3.normalize(rayDir, rayDir);
+
+    // Ray-sphere intersection: |origin + t*dir|² = 1  (Earth radius = 1)
+    // → t² + 2(origin·dir)t + (|origin|² − 1) = 0
+    const b = 2.0 * Cartesian3.dot(this.position, rayDir);
+    const c = Cartesian3.magnitudeSquared(this.position) - 1.0;
+    const discriminant = b * b - 4.0 * c;
+    if (discriminant < 0) return null;
+
+    const t = (-b - Math.sqrt(discriminant)) * 0.5;
+    if (t < 0) return null;
+
+    return new Cartesian3(
+      this.position.x + t * rayDir.x,
+      this.position.y + t * rayDir.y,
+      this.position.z + t * rayDir.z,
+    );
+  }
+
+  /**
+   * Orbit the camera around a pivot point on the Earth's surface.
+   * Horizontal delta rotates around the outward surface normal at the pivot
+   * (heading); vertical delta tilts the camera toward/away from the horizon
+   * (pitch).  Both axes pass through the pivot point so it stays fixed on
+   * screen.
+   * @param pivot        - 3D pivot in normalised ECEF (Earth radius = 1)
+   * @param deltaHeading - heading rotation in radians (positive = rightward)
+   * @param deltaPitch   - pitch rotation in radians (positive = tilt down)
+   */
+  orbitAroundPivot(pivot: Cartesian3, deltaHeading: number, deltaPitch: number): void {
+    // Arm vector: from pivot to camera
+    const arm = new Cartesian3(
+      this.position.x - pivot.x,
+      this.position.y - pivot.y,
+      this.position.z - pivot.z,
+    );
+
+    // ── Heading: rotate arm around the outward surface normal at the pivot ──
+    const pivotNormal = new Cartesian3();
+    Cartesian3.normalize(pivot, pivotNormal);
+    Camera._rotateByAxis(arm, pivotNormal, deltaHeading, arm);
+
+    // ── Pitch: rotate arm around the camera's right axis (through the pivot) ─
+    // Recompute the right vector from the (post-heading) position so it is
+    // always horizontal and perpendicular to the pivot normal.
+    const newPos = new Cartesian3(pivot.x + arm.x, pivot.y + arm.y, pivot.z + arm.z);
+    const newNadir = new Cartesian3(-newPos.x, -newPos.y, -newPos.z);
+    Cartesian3.normalize(newNadir, newNadir);
+    const worldUp = new Cartesian3(0, 0, 1);
+    const pitchAxis = new Cartesian3();
+    Cartesian3.cross(newNadir, worldUp, pitchAxis);
+    if (Cartesian3.magnitude(pitchAxis) > 1e-6) {
+      Cartesian3.normalize(pitchAxis, pitchAxis);
+    } else {
+      // Degenerate at poles: fall back to the current camera right vector
+      this.right.clone(pitchAxis);
+    }
+    Camera._rotateByAxis(arm, pitchAxis, deltaPitch, arm);
+
+    // ── Apply new position ─────────────────────────────────────────────────
+    this.position.x = pivot.x + arm.x;
+    this.position.y = pivot.y + arm.y;
+    this.position.z = pivot.z + arm.z;
+
+    // Clamp to minimum altitude (1.05 = Earth radius + 5 % safety margin above surface)
+    const r = Cartesian3.magnitude(this.position);
+    if (r < 1.05) {
+      const scale = 1.05 / r;
+      this.position.x *= scale;
+      this.position.y *= scale;
+      this.position.z *= scale;
+    }
+
+    // Rebuild camera frame looking toward Earth centre from the new position
     this._rebuildFrame();
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────
 
   /**
-   * Rebuild the camera's direction/right/up vectors from the current position
-   * and _pitchOffset.  Called after any change to position or pitch.
+   * Rotate vector v around unit axis by angle using Rodrigues' formula.
+   * result may alias v.
+   */
+  private static _rotateByAxis(
+    v: Cartesian3, axis: Cartesian3, angle: number, result: Cartesian3,
+  ): Cartesian3 {
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    const dot = Cartesian3.dot(axis, v);
+    const cross = new Cartesian3();
+    Cartesian3.cross(axis, v, cross);
+    // Compute into temporaries so result can safely alias v
+    const rx = v.x * c + cross.x * s + axis.x * dot * (1 - c);
+    const ry = v.y * c + cross.y * s + axis.y * dot * (1 - c);
+    const rz = v.z * c + cross.z * s + axis.z * dot * (1 - c);
+    result.x = rx; result.y = ry; result.z = rz;
+    return result;
+  }
+
+  /**
+   * Rebuild the camera's direction/right/up vectors so the camera looks
+   * toward the Earth centre (nadir) from its current position.
    */
   private _rebuildFrame(): void {
     // Nadir direction: from camera position toward Earth centre
@@ -194,18 +287,10 @@ export class Camera {
       Cartesian3.normalize(this.right, this.right);
     }
 
-    // "Orbit up" — perpendicular to both right and nadir, pointing toward
-    // the horizon plane (i.e. cross(right, nadir) = up at zero pitch)
-    const orbitUp = new Cartesian3();
-    Cartesian3.cross(this.right, nadir, orbitUp);
-    Cartesian3.normalize(orbitUp, orbitUp);
-
-    // Apply pitch: rotate nadir toward orbitUp by _pitchOffset
-    const c = Math.cos(this._pitchOffset);
-    const s = Math.sin(this._pitchOffset);
-    this.direction.x = nadir.x * c + orbitUp.x * s;
-    this.direction.y = nadir.y * c + orbitUp.y * s;
-    this.direction.z = nadir.z * c + orbitUp.z * s;
+    // Camera looks toward Earth centre
+    this.direction.x = nadir.x;
+    this.direction.y = nadir.y;
+    this.direction.z = nadir.z;
 
     // Camera up stays perpendicular to direction and right
     Cartesian3.cross(this.right, this.direction, this.up);
