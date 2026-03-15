@@ -42,6 +42,9 @@ export class Camera {
   private _viewDirty = true;
   private _projDirty = true;
 
+  /** Pitch offset from nadir (radians). 0 = looking straight at Earth centre. */
+  private _pitchOffset = 0;
+
   /** Scale factor: 1 internal unit = EARTH_SCALE metres */
   static readonly EARTH_SCALE = 6378137.0;
 
@@ -92,20 +95,9 @@ export class Camera {
       this.position.y = options.destination.y * scale;
       this.position.z = options.destination.z * scale;
 
-      // Point toward Earth centre
-      Cartesian3.negate(this.position, this.direction);
-      Cartesian3.normalize(this.direction, this.direction);
-
-      // Recalculate right and up
-      const worldUp = new Cartesian3(0, 0, 1);
-      Cartesian3.cross(this.direction, worldUp, this.right);
-      if (Cartesian3.magnitude(this.right) < 1e-6) {
-        this.right.x = 1; this.right.y = 0; this.right.z = 0;
-      } else {
-        Cartesian3.normalize(this.right, this.right);
-      }
-      Cartesian3.cross(this.right, this.direction, this.up);
-      Cartesian3.normalize(this.up, this.up);
+      // Reset pitch to nadir view and rebuild the camera frame
+      this._pitchOffset = 0;
+      this._rebuildFrame();
     }
     this._viewDirty = true;
   }
@@ -135,21 +127,8 @@ export class Camera {
     this.position.y = radius * Math.cos(newLat) * Math.sin(newLon);
     this.position.z = radius * Math.sin(newLat);
 
-    // Re-aim at Earth centre
-    Cartesian3.negate(this.position, this.direction);
-    Cartesian3.normalize(this.direction, this.direction);
-
-    const worldUp = new Cartesian3(0, 0, 1);
-    Cartesian3.cross(this.direction, worldUp, this.right);
-    if (Cartesian3.magnitude(this.right) < 1e-6) {
-      this.right.x = 1; this.right.y = 0; this.right.z = 0;
-    } else {
-      Cartesian3.normalize(this.right, this.right);
-    }
-    Cartesian3.cross(this.right, this.direction, this.up);
-    Cartesian3.normalize(this.up, this.up);
-
-    this._viewDirty = true;
+    // Rebuild the camera frame, preserving the current pitch offset
+    this._rebuildFrame();
   }
 
   /**
@@ -176,7 +155,64 @@ export class Camera {
     this.setView({ destination: options.destination });
   }
 
+  /**
+   * Tilt the camera view by adjusting the pitch offset from nadir.
+   * Positive delta tilts toward the horizon; negative tilts back toward nadir.
+   * @param delta - angle change in radians
+   */
+  tilt(delta: number): void {
+    // Clamp pitch offset: 0 = looking straight at Earth centre (nadir),
+    // approaching PI/2 = looking at the horizon
+    this._pitchOffset = CesiumMath.clamp(
+      this._pitchOffset + delta,
+      0,
+      Math.PI / 2 - 0.05,
+    );
+    this._rebuildFrame();
+  }
+
   // ── Private helpers ────────────────────────────────────────────────────────
+
+  /**
+   * Rebuild the camera's direction/right/up vectors from the current position
+   * and _pitchOffset.  Called after any change to position or pitch.
+   */
+  private _rebuildFrame(): void {
+    // Nadir direction: from camera position toward Earth centre
+    const nadir = new Cartesian3(
+      -this.position.x, -this.position.y, -this.position.z,
+    );
+    Cartesian3.normalize(nadir, nadir);
+
+    // Right vector: perpendicular to nadir and world-up (north pole)
+    const worldUp = new Cartesian3(0, 0, 1);
+    Cartesian3.cross(nadir, worldUp, this.right);
+    if (Cartesian3.magnitude(this.right) < 1e-6) {
+      // Degenerate at poles — fall back to a fixed right vector
+      this.right.x = 1; this.right.y = 0; this.right.z = 0;
+    } else {
+      Cartesian3.normalize(this.right, this.right);
+    }
+
+    // "Orbit up" — perpendicular to both right and nadir, pointing toward
+    // the horizon plane (i.e. cross(right, nadir) = up at zero pitch)
+    const orbitUp = new Cartesian3();
+    Cartesian3.cross(this.right, nadir, orbitUp);
+    Cartesian3.normalize(orbitUp, orbitUp);
+
+    // Apply pitch: rotate nadir toward orbitUp by _pitchOffset
+    const c = Math.cos(this._pitchOffset);
+    const s = Math.sin(this._pitchOffset);
+    this.direction.x = nadir.x * c + orbitUp.x * s;
+    this.direction.y = nadir.y * c + orbitUp.y * s;
+    this.direction.z = nadir.z * c + orbitUp.z * s;
+
+    // Camera up stays perpendicular to direction and right
+    Cartesian3.cross(this.right, this.direction, this.up);
+    Cartesian3.normalize(this.up, this.up);
+
+    this._viewDirty = true;
+  }
 
   private _updateViewMatrix(): void {
     const target = new Cartesian3(

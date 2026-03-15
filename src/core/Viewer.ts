@@ -61,6 +61,10 @@ export class Viewer {
   private _isRightDragging = false;
   private _lastRightMouseY = 0;
 
+  // Mouse pitch state (middle button)
+  private _isMiddleDragging = false;
+  private _lastMiddleMouseY = 0;
+
   private _initialized = false;
   private _destroyed = false;
 
@@ -175,6 +179,11 @@ export class Viewer {
         this._isDragging    = true;
         this._lastMouseX    = e.clientX;
         this._lastMouseY    = e.clientY;
+      } else if (e.button === 1) {
+        // Middle button — pitch adjustment
+        e.preventDefault();
+        this._isMiddleDragging  = true;
+        this._lastMiddleMouseY  = e.clientY;
       } else if (e.button === 2) {
         this._isRightDragging = true;
         this._lastRightMouseY = e.clientY;
@@ -196,6 +205,13 @@ export class Viewer {
         this._scene.camera.rotate(-dx * sensitivity, dy * sensitivity);
       }
 
+      if (this._isMiddleDragging) {
+        const dy = e.clientY - this._lastMiddleMouseY;
+        this._lastMiddleMouseY = e.clientY;
+        // Drag up (dy < 0) → tilt toward horizon; drag down → tilt back to nadir
+        this._scene.camera.tilt(-dy * 0.005);
+      }
+
       if (this._isRightDragging) {
         const dy = e.clientY - this._lastRightMouseY;
         this._lastRightMouseY = e.clientY;
@@ -206,6 +222,7 @@ export class Viewer {
 
     window.addEventListener('mouseup', (e) => {
       if (e.button === 0) this._isDragging = false;
+      if (e.button === 1) this._isMiddleDragging = false;
       if (e.button === 2) this._isRightDragging = false;
     });
 
