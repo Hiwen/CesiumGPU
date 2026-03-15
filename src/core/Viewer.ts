@@ -231,8 +231,8 @@ export class Viewer {
       if (this._isRightDragging) {
         const dy = e.clientY - this._lastRightMouseY;
         this._lastRightMouseY = e.clientY;
-        // Right-drag down → zoom out (positive delta = larger radius)
-        this._scene.camera.zoom(dy * r * 0.002);
+        // Right-drag down → zoom in (matches Cesium: drag toward globe = move closer)
+        this._scene.camera.zoom(-dy * r * 0.002);
       }
     });
 
