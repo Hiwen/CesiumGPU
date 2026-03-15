@@ -2,6 +2,7 @@ import { Viewer } from './core/Viewer';
 import { Clock } from './core/Clock';
 import { Cartesian3 } from './math/Cartesian3';
 import { Matrix4 } from './math/Matrix4';
+import { Transforms } from './math/Transforms';
 import { JulianDate } from './math/JulianDate';
 import { Color } from './math/Color';
 import { Primitive, PrimitiveCollection } from './scene/Primitive';
@@ -163,11 +164,18 @@ void main();
 
 /**
  * Load the test cone model (public/models/cone4-red.glb) and place it above
- * Beijing at a scale that is clearly visible from the default camera altitude
- * (20 000 km).
+ * Beijing using a proper ENU (East-North-Up) reference frame so that the
+ * model's +Y axis (GLTF 2.0 Y-up convention) aligns with the local Earth
+ * surface normal.
  *
- * Scale: 500 000 m (500 km) so the cone is prominent at the initial view.
- * Position: Beijing (116.4°E, 39.9°N) at Earth surface level.
+ * Matrix composition:
+ *   1. `Transforms.eastNorthUpToFixedFrame(ecef)` – rotates & translates to
+ *      ENU frame at Beijing (col0=East, col1=North, col2=Up).
+ *   2. `Matrix4.fromRotationX(Math.PI / 2)` – converts GLTF Y-up to ENU
+ *      Z-up so the model stands upright on the surface.
+ *
+ * Scale: 500 000 m (500 km) so the cone is prominent at the initial
+ * 20 000 km camera altitude.
  */
 async function _loadConeModel(
   viewer: Viewer,
@@ -177,22 +185,27 @@ async function _loadConeModel(
   CameraClass: typeof Camera
 ): Promise<void> {
   try {
-    const invS  = 1.0 / CameraClass.EARTH_SCALE;
+    // ECEF position of Beijing (116.4°E, 39.9°N) at Earth surface level (metres)
+    const ecef = Cartesian3Class.fromDegrees(116.4, 39.9, 0);
 
-    // ECEF position of Beijing at Earth surface
-    const ecef  = Cartesian3Class.fromDegrees(116.4, 39.9, 0);
+    // ENU-to-normalised-ECEF matrix at the placement point:
+    //   col0 = East, col1 = North, col2 = Up (surface normal), col3 = position
+    const enuMatrix = Transforms.eastNorthUpToFixedFrame(ecef);
+
+    // GLTF 2.0 is Y-up; the ENU local frame is Z-up.
+    // A +90° rotation around the East (X) axis maps the model's +Y to ENU +Z,
+    // so the model stands upright with its top pointing away from Earth.
+    const yUpToZUp = Matrix4Class.fromRotationX(Math.PI / 2);
+
+    const placementMatrix = Matrix4.multiply(enuMatrix, yUpToZUp, new Matrix4());
 
     // Scale: 500 000 m → normalised ECEF units
-    const modelScale = 500_000 * invS;
-
-    const mm = Matrix4Class.fromTranslation(
-      new Cartesian3Class(ecef.x * invS, ecef.y * invS, ecef.z * invS)
-    );
+    const modelScale = 500_000 / CameraClass.EARTH_SCALE;
 
     const model = await ModelClass.fromGltfAsync({
       url:         '/models/cone4-red.glb',
       scene:       viewer.scene,
-      modelMatrix: mm,
+      modelMatrix: placementMatrix,
       scale:       modelScale,
     });
 

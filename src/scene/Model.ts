@@ -20,9 +20,17 @@ export interface ModelFromGltfOptions {
    * Defaults to the identity matrix.
    *
    * In CesiumGPU, world space is normalised ECEF (Earth radius = 1.0).
-   * To place a model at a geographic position you can use
-   * `Matrix4.fromTranslation(Cartesian3.fromDegrees(...))` and then divide
-   * the translation by `Camera.EARTH_SCALE`.
+   * For correct on-Earth orientation, build the matrix using
+   * `Transforms.eastNorthUpToFixedFrame(ecefPosition)` combined with a
+   * GLTF Y-up correction (`Matrix4.fromRotationX(Math.PI / 2)`):
+   *
+   * ```typescript
+   * import { Cartesian3, Transforms, Matrix4 } from './index';
+   * const ecef   = Cartesian3.fromDegrees(lon, lat, alt); // metres
+   * const enu    = Transforms.eastNorthUpToFixedFrame(ecef);
+   * const yUpFix = Matrix4.fromRotationX(Math.PI / 2);
+   * const mm     = Matrix4.multiply(enu, yUpFix, new Matrix4());
+   * ```
    */
   modelMatrix?: Matrix4;
   /**

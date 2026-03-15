@@ -12,6 +12,7 @@ export { Cartesian2 } from './math/Cartesian2';
 export { Cartesian3 } from './math/Cartesian3';
 export { Cartesian4 } from './math/Cartesian4';
 export { Matrix4 } from './math/Matrix4';
+export { Transforms } from './math/Transforms';
 export { Quaternion } from './math/Quaternion';
 export { Ellipsoid } from './math/Ellipsoid';
 export { Color } from './math/Color';
