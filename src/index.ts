@@ -29,6 +29,12 @@ export { Primitive, PrimitiveCollection } from './scene/Primitive';
 export { EllipsoidGeometry } from './scene/EllipsoidGeometry';
 export { SunPosition } from './scene/SunPosition';
 
+// Model loading
+export { Model } from './scene/Model';
+export { GltfLoader } from './loader/GltfLoader';
+export type { ModelFromGltfOptions } from './scene/Model';
+export type { ParsedGltfModel, ParsedMeshPrimitive, ParsedMaterial } from './loader/GltfLoader';
+
 // Rendering passes
 export { GBufferPass } from './scene/passes/GBufferPass';
 export { LightingPass } from './scene/passes/LightingPass';

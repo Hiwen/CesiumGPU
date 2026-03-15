@@ -1,12 +1,15 @@
 import { Viewer } from './core/Viewer';
 import { Clock } from './core/Clock';
 import { Cartesian3 } from './math/Cartesian3';
+import { Matrix4 } from './math/Matrix4';
 import { JulianDate } from './math/JulianDate';
 import { Color } from './math/Color';
 import { Primitive, PrimitiveCollection } from './scene/Primitive';
 import { EllipsoidGeometry } from './scene/EllipsoidGeometry';
 import { DirectionalLight } from './scene/DirectionalLight';
 import { SunPosition } from './scene/SunPosition';
+import { Model } from './scene/Model';
+import { Camera } from './scene/Camera';
 
 /**
  * CesiumGPU - WebGPU 3D Earth Rendering Engine
@@ -143,6 +146,24 @@ async function main() {
 
     console.info('CesiumGPU initialised successfully.');
 
+    // ── Load a GLTF/GLB model (optional demo) ─────────────────────────────
+    // Drop any .glb file into public/models/ and update the URL below.
+    // The modelMatrix positions the model in normalised ECEF space.
+    //
+    // Example: place a 100 m-tall model above Beijing at 500 m altitude.
+    //   const ecef  = Cartesian3.fromDegrees(116.4, 39.9, 500);
+    //   const scale = 100 / Camera.EARTH_SCALE;
+    //   const mm    = Matrix4.fromTranslation(
+    //     new Cartesian3(ecef.x / Camera.EARTH_SCALE,
+    //                    ecef.y / Camera.EARTH_SCALE,
+    //                    ecef.z / Camera.EARTH_SCALE)
+    //   );
+    //   const model = await Model.fromGltfAsync({
+    //     url: '/models/drone.glb', scene: viewer.scene, modelMatrix: mm, scale,
+    //   });
+    //   console.info(`Model loaded: ${model.primitiveCount} primitives`);
+    void _tryLoadDemoModel(viewer, Model, Matrix4, Cartesian3, Camera);
+
   } catch (err) {
     console.error('CesiumGPU init error:', err);
     if (noWebgpuEl) noWebgpuEl.style.display = 'block';
@@ -151,7 +172,49 @@ async function main() {
 
 void main();
 
-// ── Public exports ──────────────────────────────────────────────────────────
+// ── Demo model loader (non-fatal) ────────────────────────────────────────────
+
+/**
+ * Try to load a GLB model from `/models/model.glb` if it exists.
+ * Non-fatal: silently skips if the file is not present.
+ */
+async function _tryLoadDemoModel(
+  viewer: Viewer,
+  ModelClass: typeof Model,
+  Matrix4Class: typeof Matrix4,
+  Cartesian3Class: typeof Cartesian3,
+  CameraClass: typeof Camera
+): Promise<void> {
+  try {
+    // Check whether the demo model exists before trying to load it
+    const probeRes = await fetch('/models/model.glb', { method: 'HEAD' });
+    if (!probeRes.ok) return; // File not present — skip silently
+
+    // Place the model above Beijing at 500 m altitude
+    const ecef  = Cartesian3Class.fromDegrees(116.4, 39.9, 500);
+    const invS  = 1.0 / CameraClass.EARTH_SCALE;
+
+    // Scale: render the model at ~100 m visual size in normalised ECEF units
+    const modelScale = 100 * invS;
+
+    const mm = Matrix4Class.fromTranslation(
+      new Cartesian3Class(ecef.x * invS, ecef.y * invS, ecef.z * invS)
+    );
+
+    const model = await ModelClass.fromGltfAsync({
+      url:         '/models/model.glb',
+      scene:       viewer.scene,
+      modelMatrix: mm,
+      scale:       modelScale,
+    });
+
+    console.info(`CesiumGPU: demo model loaded (${model.primitiveCount} primitive(s))`);
+  } catch {
+    // Not a fatal error — model loading is optional for the demo
+  }
+}
+
+// ── Public exports ───────────────────────────────────────────────────────────
 export {
   Viewer,
   Cartesian3,
@@ -160,6 +223,8 @@ export {
   PrimitiveCollection,
   EllipsoidGeometry,
   DirectionalLight,
+  Model,
+  Camera,
 };
 
 export { CesiumMath } from './math/CesiumMath';
@@ -170,7 +235,7 @@ export { Quaternion } from './math/Quaternion';
 export { Ellipsoid } from './math/Ellipsoid';
 export { JulianDate } from './math/JulianDate';
 export { Scene } from './scene/Scene';
-export { Camera } from './scene/Camera';
 export { Globe } from './scene/Globe';
 export { Clock } from './core/Clock';
 export { SunPosition } from './scene/SunPosition';
+export { GltfLoader } from './loader/GltfLoader';
