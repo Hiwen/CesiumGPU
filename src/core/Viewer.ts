@@ -32,6 +32,20 @@ export class Viewer {
   private _context: Context;
   private _scene: Scene;
 
+  /**
+   * Optional callback invoked at the beginning of every render frame, before
+   * the scene is rendered.  Use this to update lights, primitives, or the clock
+   * based on the current simulation time.
+   *
+   * ```typescript
+   * viewer.preRender = () => {
+   *   clock.tick();
+   *   scene.lights[0].direction = SunPosition.computeSunDirection(clock.currentTime);
+   * };
+   * ```
+   */
+  preRender: (() => void) | null = null;
+
   private _animFrameId: number | null = null;
   private _fps = 0;
   private _frameCount = 0;
@@ -129,6 +143,9 @@ export class Viewer {
     const loop = (now: number) => {
       if (this._destroyed) return;
       this._animFrameId = requestAnimationFrame(loop);
+
+      // Pre-render hook (clock tick, sun direction update, etc.)
+      this.preRender?.();
 
       this._scene.render();
 

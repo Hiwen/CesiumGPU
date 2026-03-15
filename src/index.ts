@@ -4,6 +4,7 @@
  * Mirrors Cesium's top-level namespace exports.
  */
 export { Viewer } from './core/Viewer';
+export { Clock } from './core/Clock';
 
 // Math
 export { CesiumMath } from './math/CesiumMath';
@@ -14,6 +15,7 @@ export { Matrix4 } from './math/Matrix4';
 export { Quaternion } from './math/Quaternion';
 export { Ellipsoid } from './math/Ellipsoid';
 export { Color } from './math/Color';
+export { JulianDate } from './math/JulianDate';
 
 // Renderer
 export { Context } from './renderer/Context';
@@ -25,6 +27,7 @@ export { Globe } from './scene/Globe';
 export { DirectionalLight } from './scene/DirectionalLight';
 export { Primitive, PrimitiveCollection } from './scene/Primitive';
 export { EllipsoidGeometry } from './scene/EllipsoidGeometry';
+export { SunPosition } from './scene/SunPosition';
 
 // Rendering passes
 export { GBufferPass } from './scene/passes/GBufferPass';
