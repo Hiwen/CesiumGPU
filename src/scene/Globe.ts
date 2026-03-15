@@ -97,9 +97,13 @@ export class Globe {
 
       // TODO: generate mipmaps if needed
 
+      // WebGPU requires mipmapFilter:'linear' whenever maxAnisotropy > 1.
+      // mipLevelCount is 1 so mipmapFilter has no visual effect, but the
+      // validator enforces the constraint and rejects 'nearest' (the default).
       const sampler = device.createSampler({
         minFilter:    'linear',
         magFilter:    'linear',
+        mipmapFilter: 'linear',
         addressModeU: 'repeat',
         addressModeV: 'clamp-to-edge',
         maxAnisotropy: 4,
