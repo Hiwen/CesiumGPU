@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CesiumGPU - WebGPU 地球渲染引擎</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+    #cesiumContainer {
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+    #no-webgpu {
+      display: none;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #fff;
+      font-family: sans-serif;
+      font-size: 1.2rem;
+      text-align: center;
+      background: rgba(0,0,0,0.8);
+      padding: 2rem;
+      border-radius: 8px;
+    }
+    #info {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      color: #fff;
+      font-family: sans-serif;
+      font-size: 0.85rem;
+      background: rgba(0,0,0,0.6);
+      padding: 8px 12px;
+      border-radius: 6px;
+      pointer-events: none;
+    }
+    #fps {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      color: #0f0;
+      font-family: monospace;
+      font-size: 0.85rem;
+      background: rgba(0,0,0,0.6);
+      padding: 6px 10px;
+      border-radius: 6px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="cesiumContainer">
+    <div id="no-webgpu">
+      <strong>不支持 WebGPU</strong><br/>
+      请使用支持 WebGPU 的浏览器<br/>
+      （Chrome 113+、Edge 113+ 或开启 flag 的 Firefox Nightly）
+    </div>
+    <div id="info">
+      <strong>CesiumGPU</strong> — WebGPU 三维渲染引擎<br/>
+      🖱 拖拽旋转 &nbsp;|&nbsp; 滚轮缩放<br/>
+      延迟渲染管线 + 透明物体支持
+    </div>
+    <div id="fps">0 FPS</div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
