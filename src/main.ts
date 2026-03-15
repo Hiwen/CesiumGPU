@@ -30,8 +30,13 @@ async function main() {
       destination: Cartesian3.fromDegrees(116.4, 39.9, 20_000_000),
     });
 
-    // ── Apply procedural Earth texture (local, no network required) ────────
-    viewer.globe.generateProceduralTexture();
+    // ── Load Earth imagery from the bundled local image ────────────────────
+    // public/images/world.jpg is served at /images/world.jpg by Vite
+    viewer.globe.loadImageryFromUrl('/images/world.jpg').catch(() => {
+      // Non-fatal: fall back to procedural texture if the file is missing
+      console.warn('CesiumGPU: world.jpg not found, falling back to procedural texture.');
+      viewer.globe.generateProceduralTexture();
+    });
 
     console.info('CesiumGPU initialised successfully.');
 
