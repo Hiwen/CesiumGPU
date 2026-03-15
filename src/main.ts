@@ -146,23 +146,10 @@ async function main() {
 
     console.info('CesiumGPU initialised successfully.');
 
-    // ── Load a GLTF/GLB model (optional demo) ─────────────────────────────
-    // Drop any .glb file into public/models/ and update the URL below.
-    // The modelMatrix positions the model in normalised ECEF space.
-    //
-    // Example: place a 100 m-tall model above Beijing at 500 m altitude.
-    //   const ecef  = Cartesian3.fromDegrees(116.4, 39.9, 500);
-    //   const scale = 100 / Camera.EARTH_SCALE;
-    //   const mm    = Matrix4.fromTranslation(
-    //     new Cartesian3(ecef.x / Camera.EARTH_SCALE,
-    //                    ecef.y / Camera.EARTH_SCALE,
-    //                    ecef.z / Camera.EARTH_SCALE)
-    //   );
-    //   const model = await Model.fromGltfAsync({
-    //     url: '/models/drone.glb', scene: viewer.scene, modelMatrix: mm, scale,
-    //   });
-    //   console.info(`Model loaded: ${model.primitiveCount} primitives`);
-    void _tryLoadDemoModel(viewer, Model, Matrix4, Cartesian3, Camera);
+    // ── Load cone4-red.glb test model ─────────────────────────────────────
+    // Placed above Beijing (116.4°E, 39.9°N) at Earth surface.
+    // Scale of 500 km makes it visible from the default 20 000 km camera.
+    void _loadConeModel(viewer, Model, Matrix4, Cartesian3, Camera);
 
   } catch (err) {
     console.error('CesiumGPU init error:', err);
@@ -172,13 +159,17 @@ async function main() {
 
 void main();
 
-// ── Demo model loader (non-fatal) ────────────────────────────────────────────
+// ── Test model loader ─────────────────────────────────────────────────────────
 
 /**
- * Try to load a GLB model from `/models/model.glb` if it exists.
- * Non-fatal: silently skips if the file is not present.
+ * Load the test cone model (public/models/cone4-red.glb) and place it above
+ * Beijing at a scale that is clearly visible from the default camera altitude
+ * (20 000 km).
+ *
+ * Scale: 500 000 m (500 km) so the cone is prominent at the initial view.
+ * Position: Beijing (116.4°E, 39.9°N) at Earth surface level.
  */
-async function _tryLoadDemoModel(
+async function _loadConeModel(
   viewer: Viewer,
   ModelClass: typeof Model,
   Matrix4Class: typeof Matrix4,
@@ -186,31 +177,28 @@ async function _tryLoadDemoModel(
   CameraClass: typeof Camera
 ): Promise<void> {
   try {
-    // Check whether the demo model exists before trying to load it
-    const probeRes = await fetch('/models/model.glb', { method: 'HEAD' });
-    if (!probeRes.ok) return; // File not present — skip silently
-
-    // Place the model above Beijing at 500 m altitude
-    const ecef  = Cartesian3Class.fromDegrees(116.4, 39.9, 500);
     const invS  = 1.0 / CameraClass.EARTH_SCALE;
 
-    // Scale: render the model at ~100 m visual size in normalised ECEF units
-    const modelScale = 100 * invS;
+    // ECEF position of Beijing at Earth surface
+    const ecef  = Cartesian3Class.fromDegrees(116.4, 39.9, 0);
+
+    // Scale: 500 000 m → normalised ECEF units
+    const modelScale = 500_000 * invS;
 
     const mm = Matrix4Class.fromTranslation(
       new Cartesian3Class(ecef.x * invS, ecef.y * invS, ecef.z * invS)
     );
 
     const model = await ModelClass.fromGltfAsync({
-      url:         '/models/model.glb',
+      url:         '/models/cone4-red.glb',
       scene:       viewer.scene,
       modelMatrix: mm,
       scale:       modelScale,
     });
 
-    console.info(`CesiumGPU: demo model loaded (${model.primitiveCount} primitive(s))`);
-  } catch {
-    // Not a fatal error — model loading is optional for the demo
+    console.info(`CesiumGPU: cone4-red.glb loaded (${model.primitiveCount} primitive(s))`);
+  } catch (err) {
+    console.warn('CesiumGPU: failed to load cone4-red.glb', err);
   }
 }
 
