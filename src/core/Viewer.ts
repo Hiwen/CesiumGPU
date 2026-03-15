@@ -225,7 +225,7 @@ export class Viewer {
         this._lastMiddleMouseY = e.clientY;
         // dx > 0 (right) → negative heading  (Cesium-compatible)
         // dy > 0 (down)  → positive pitch delta (tilt away from horizon)
-        this._scene.camera.orbitAroundPivot(this._middlePivot, -dx * 0.005, dy * 0.005);
+        this._scene.camera.orbitAroundPivot(this._middlePivot, -dx * 0.005, -dy * 0.005);
       }
 
       if (this._isRightDragging) {
