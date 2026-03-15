@@ -1,9 +1,12 @@
 import { Viewer } from './core/Viewer';
+import { Clock } from './core/Clock';
 import { Cartesian3 } from './math/Cartesian3';
+import { JulianDate } from './math/JulianDate';
 import { Color } from './math/Color';
 import { Primitive, PrimitiveCollection } from './scene/Primitive';
 import { EllipsoidGeometry } from './scene/EllipsoidGeometry';
 import { DirectionalLight } from './scene/DirectionalLight';
+import { SunPosition } from './scene/SunPosition';
 
 /**
  * CesiumGPU - WebGPU 3D Earth Rendering Engine
@@ -38,6 +41,106 @@ async function main() {
       viewer.globe.generateProceduralTexture();
     });
 
+    // ── Clock (simulation time) ────────────────────────────────────────────
+    // Start at noon UTC on today's date so the sun is visible immediately.
+    const today = new Date();
+    today.setUTCHours(12, 0, 0, 0);
+    const clock = new Clock({
+      currentTime:   JulianDate.fromDate(today),
+      multiplier:    3600,   // 1 real second = 1 simulation hour (default)
+      shouldAnimate: false,  // user must press play
+    });
+
+    // ── Timeline UI wiring ─────────────────────────────────────────────────
+    const tlPlayPause = document.getElementById('tlPlayPause') as HTMLButtonElement | null;
+    const tlDateEl    = document.getElementById('tlDate')      as HTMLInputElement   | null;
+    const tlSlider    = document.getElementById('tlSlider')    as HTMLInputElement   | null;
+    const tlTimeEl    = document.getElementById('tlTime')      as HTMLElement        | null;
+    const tlSpeedEl   = document.getElementById('tlSpeed')     as HTMLSelectElement  | null;
+
+    /** Pad a number to 2 digits with a leading zero. */
+    const pad2 = (n: number) => String(Math.floor(n)).padStart(2, '0');
+
+    /** Format a JS Date as HH:MM:SS UTC. */
+    const formatTime = (d: Date) =>
+      `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}:${pad2(d.getUTCSeconds())}`;
+
+    /** Format a JS Date as a yyyy-MM-dd string for <input type="date">. */
+    const formatDate = (d: Date) =>
+      `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+
+    /** Sync all timeline UI elements to reflect clock.currentTime. */
+    const syncUI = () => {
+      const d = clock.currentTime.toDate();
+
+      if (tlTimeEl)  tlTimeEl.textContent  = formatTime(d);
+      if (tlDateEl && !tlDateEl.matches(':focus'))
+        tlDateEl.value = formatDate(d);
+
+      // Time-of-day slider: seconds since midnight UTC
+      if (tlSlider && !tlSlider.matches(':active')) {
+        const sod = d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds();
+        tlSlider.value = String(sod);
+      }
+    };
+
+    // Play / Pause button
+    if (tlPlayPause) {
+      tlPlayPause.addEventListener('click', () => {
+        clock.toggle();
+        tlPlayPause.textContent = clock.shouldAnimate ? '⏸' : '▶';
+      });
+    }
+
+    // Time-of-day slider → update clock's secondsOfDay
+    if (tlSlider) {
+      tlSlider.addEventListener('input', () => {
+        const sod = Number(tlSlider.value);
+        // Keep the current calendar date; replace only the time-of-day
+        const d = clock.currentTime.toDate();
+        d.setUTCHours(0, 0, 0, 0);
+        const newTime = new Date(d.getTime() + sod * 1000);
+        clock.currentTime = JulianDate.fromDate(newTime);
+        syncUI();
+      });
+    }
+
+    // Date picker → change the calendar date while keeping the current time-of-day
+    if (tlDateEl) {
+      // Initialise the date input
+      tlDateEl.value = formatDate(today);
+
+      tlDateEl.addEventListener('change', () => {
+        const parts = tlDateEl.value.split('-');
+        if (parts.length !== 3) return;
+        const [y, mo, da] = parts.map(Number);
+        const cur = clock.currentTime.toDate();
+        const newDate = new Date(Date.UTC(y, mo - 1, da,
+          cur.getUTCHours(), cur.getUTCMinutes(), cur.getUTCSeconds()));
+        clock.currentTime = JulianDate.fromDate(newDate);
+        syncUI();
+      });
+    }
+
+    // Speed selector
+    if (tlSpeedEl) {
+      tlSpeedEl.addEventListener('change', () => {
+        clock.multiplier = Number(tlSpeedEl.value);
+      });
+    }
+
+    // ── Pre-render hook: tick clock and update sun direction ───────────────
+    const sunLight = viewer.scene.lights[0]; // default directional light = Sun
+
+    viewer.preRender = () => {
+      clock.tick();
+      syncUI();
+
+      if (sunLight) {
+        sunLight.direction = SunPosition.computeSunDirection(clock.currentTime);
+      }
+    };
+
     console.info('CesiumGPU initialised successfully.');
 
   } catch (err) {
@@ -65,6 +168,9 @@ export { Cartesian4 } from './math/Cartesian4';
 export { Matrix4 } from './math/Matrix4';
 export { Quaternion } from './math/Quaternion';
 export { Ellipsoid } from './math/Ellipsoid';
+export { JulianDate } from './math/JulianDate';
 export { Scene } from './scene/Scene';
 export { Camera } from './scene/Camera';
 export { Globe } from './scene/Globe';
+export { Clock } from './core/Clock';
+export { SunPosition } from './scene/SunPosition';
